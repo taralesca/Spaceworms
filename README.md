@@ -7,3 +7,4 @@ Luckily, they come one by one, but beware: Some worms move incredibly fast!
 
 
 !TODO - Work in progress
+Still lacks levels, timers, highscores.
