@@ -1,15 +1,28 @@
 #include "LedControl.h"
-#define X_pin A2
-#define SW_pin 2
-
+#include "LiquidCrystal.h"
+#define BAUD_RATE 9600
+#define INF 99999999999999999
 long long globalMillis = millis();
+
+/* Change the following for joystick / potentiometer */
+#define X_PIN A2
+#define BTN_PIN 13
+
+/* V0_PIN uses PWM to control display intensity */
+#define V0_PIN 9 
+
 bool underFire[9]; // !TODO
 
 
 class Matrix {
+    /*                  The Matrix class wraps around LedControl                    */
+    /* With minimal effort, it could be changed with another type of square display */
   private:
+    
     LedControl led_matrix = LedControl(12, 11, 10, 1);
+
   public:
+
     Matrix(){
         led_matrix.shutdown(0, false); 
         led_matrix.setIntensity(0, 2); 
@@ -27,26 +40,70 @@ class Matrix {
     void ledOff(int row, int col) {
         led_matrix.setLed(0, row - 1, col - 1, false);
     }
+
 } matrix; /* to be treated like Singleton */
 
 
+class LCD {
+  private:
+
+    LiquidCrystal lcd = LiquidCrystal(2, 3, 4, 5, 6, 7);
+
+  public:
+
+    LCD() {
+        lcd.begin(16, 2);
+        lcd.clear();
+    }
+
+    void clearScreen() {
+        lcd.clear();
+    }
+
+    void printLCD(String message, int row, int col) {
+        lcd.setCursor(col, row);  
+        lcd.print(message);
+    }
+
+} display; /* to be treated like Singleton */
+
+
+class GameMenu {
+    /// TODO! - may completely remove this
+  public:
+
+    void welcomeMessage(LCD display) {
+        display.printLCD("Spaceworms", 0, 3);
+        display.printLCD("Press X to start", 1, 0);
+    }
+
+    void gameOverMessage(LCD display) {
+        display.clearScreen();
+        display.printLCD("Game Over", 0, 3);
+        display.printLCD("X to restart", 1, 2);
+    }
+
+} gameMenu; /* to be treated like Singleton */
+
+
 class Control {
+    /* Works regardless of analog input alternative */
+
   public:
     Control() {
-        pinMode(SW_pin, INPUT);
-        digitalWrite(SW_pin, HIGH);
+        pinMode(BTN_PIN, INPUT);
+        digitalWrite(BTN_PIN, HIGH);
     }
 
     bool shootListener() {
         /* 1 = shooting | 0 = otherwise */
-        bool press = digitalRead(SW_pin);
+        bool press = digitalRead(BTN_PIN);
         return press; 
         /// !TODO
     }
 
     int moveListener() {
-        /* -1 = left | 0 = stay | 1 = right */
-        int input = analogRead(X_pin);
+        int input = analogRead(X_PIN);
         int x = map(input, 0, 1030, 1, 9);
         return x;
     }
@@ -54,9 +111,11 @@ class Control {
 } joystick; /* to be treated like Singleton */
 
 
+
 class GameScreen {
-  private:
     /* The game screen is 9x9 to avoid border collisions */
+
+  private:
     bool screen[9][9];
   public:
     gameScreen() {
@@ -96,6 +155,7 @@ class GameScreen {
     void bitOff(int row, int col) {
         screen[row][col] = false;
     }
+
 } mainScreen; /* to be treated like Singleton */
 
 
@@ -131,7 +191,7 @@ class Spaceship {
     }
 
     void signalShoot(int col) {
-        // !TODO
+        /// !TODO
         long long currentTime;
         underFire[col] = true;
         if (currentTime - globalMillis >= 200) {
@@ -159,17 +219,73 @@ class Spaceship {
 } spaceship; /* to be treated like Singleton */
 
 
+class GameMaster {
+    /* In charge with the game flow. */
+  private:
+
+    bool running;
+    bool end;
+  
+  public:
+
+    GameMaster() {
+        end = false;
+        running = false;
+    }
+
+    bool isRunning() {
+        return running;
+    }
+
+    void startGame(GameScreen &gameScreen) {
+        if(joystick.shootListener()){
+            gameMenu.welcomeMessage(display);
+            running = true;
+        }
+    }
+
+    void endGame() {
+        running = false;
+    }
+
+    void drawGameOverScreen(GameScreen &gameScreen) {
+        gameScreen.clearScreen();
+        for (int i = 1; i <= 8; i++){
+            gameScreen.bitOn(i, i);
+        }
+        gameScreen.draw();
+    }
+
+    void gameOver(GameScreen &gameScreen) {
+        gameMenu.gameOverMessage(display);
+        end = true;
+        running = false;
+        gameScreen.clearScreen();
+        drawGameOverScreen(gameScreen);
+    }
+
+    void isGameOver() {
+        return end;
+    }
+
+} gameMaster;
+
+
 class Invader {
     int posCol;
     int posRow;
     int speed;
     bool spawned;
+    bool isMoving;
   public:
+    Invader() {} /* = default */
+    
     Invader(int posRow, int posCol, int speed){
         this->posRow = posRow;
         this->posCol = posCol;
         this->speed = speed;
         this->spawned = true;
+        this->isMoving = false;
         drawInvader();
     }
 
@@ -188,38 +304,87 @@ class Invader {
     }
 
     void despawn() {
-        spawned = false;
-        clearInvader();
+        if (isMoving) {
+            spawned = false;
+            clearInvader();
+        }
+    }
+    
+    void signalGameOver(GameMaster &gameMaster){
+        gameMaster.gameOver(mainScreen);
     }
 
     void move(){
+        isMoving = true;
         long long currentTime = millis();
         int directionRow = 1;
         int directionCol = 1;
-        if (posRow <= 5) {
+        if (posRow <= 6) {
+
             if (currentTime - globalMillis >= speed) {
+
                 clearInvader();
                 posRow = posRow + directionRow;
                 posCol = posCol;
-                drawInvader();
-
-                if (underFire[posCol]) {
-                    this->despawn();
+                if (posRow == 7 && !underFire[posCol]) {
+                    signalGameOver(gameMaster);
                 }
-
+                
+                if (underFire[posCol] && isMoving) {
+                    this->despawn();
+                    underFire[posCol] = false;
+                } else {
+                    drawInvader();
+                }
+                
                 globalMillis = currentTime;
             }
         }
     }
-} ;
+} invaders[9];
+
+
+
+
+void drawInvaders() {
+    /// !TODO
+    for (int col = 1; col <= 8; col++) {
+        invaders[col] = Invader(random(1,4), col, random(300, 500));
+    }
+}
 
 
 void setup() {
 
+    pinMode(V0_PIN, OUTPUT); 
+    analogWrite(V0_PIN, 90); 
+
+    randomSeed( analogRead(0) );
+
+    gameMenu.welcomeMessage(display);
 }
 
+
 void loop() {
-    mainScreen.draw();
-    spaceship.move(joystick.moveListener());
-    spaceship.gun(joystick.shootListener());
+
+    if ( gameMaster.isRunning() ) {
+        mainScreen.draw();
+        for (int i = 1; i <= 8; i++) {
+            if ( invaders[i].isSpawned() ) {
+                invaders[i].move();
+            }
+        }
+        spaceship.move(joystick.moveListener());
+        spaceship.gun(joystick.shootListener());
+        
+    } else {
+        if ( joystick.shootListener() ) {
+            for (int col = 1; col <= 8; col++) {
+                underFire[col] = 0;
+            }
+            mainScreen.clearScreen();
+            drawInvaders();
+            gameMaster.startGame(mainScreen);
+        }
+    }
 }
