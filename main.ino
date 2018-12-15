@@ -16,12 +16,12 @@ bool underFire[9]; // !TODO
 long timer = 0;
 bool message = false;
 
-int getHighScore(){
-    int highscore;
+long getHighScore(){
+    long highscore;
     EEPROM.get(0, highscore);
     return highscore;
 }
-void setHighScore(int currentScore){
+void setHighScore(long currentScore){
     if(getHighScore() < currentScore)
         EEPROM.put(0, currentScore);
 }
@@ -96,11 +96,11 @@ class GameMenu {
         display.printLCD(String(score/100), 0, 12);
         //display.printLCD("X to restart", 1, 2);
         display.printLCD("Highscore: ", 1, 1);
-        int highscore;
+        long highscore;
         EEPROM.get(0, highscore);
         display.printLCD(String(highscore/100), 1 ,12);
     }
-    void highscoreScreen(LCD display, int score) {
+    void highscoreScreen(LCD display, long score) {
         display.clearScreen();
         display.printLCD("Highscore", 0, 1);
         display.printLCD(String(score/100),0 ,12);
@@ -323,6 +323,7 @@ class Invader {
     }
 
     void clearInvader() {
+        //this->posRow = 0;
         mainScreen.bitOff(posRow - 1, posCol);
         mainScreen.bitOff(posRow    , posCol);
     }   
@@ -374,10 +375,11 @@ class Invader {
 
 
 
-void drawInvaders() {
+void drawInvaders(int speed) {
     /// !TODO
     for (int col = 1; col <= 8; col++) {
-        invaders[col] = Invader(random(1,4), col, random(300, 500));
+        if(!invaders[col].isSpawned()) 
+            invaders[col] = Invader(random(1,2), col, random(speed, speed+200));
     }
 }
 
@@ -393,6 +395,7 @@ void setup() {
 }
 
 long globalMillis2 = 0;
+long speed = 200;
 void loop() {
     if ( gameMaster.isRunning() ) {
         if(!message){
@@ -400,22 +403,28 @@ void loop() {
             display.printLCD("Shoot 'em all!", 0, 0);
             message = true;
         }
+        drawInvaders(speed);
+
         mainScreen.draw();
-        for (int i = 1; i <= 8; i++) {
-            if ( invaders[i].isSpawned() ) {
-                invaders[i].move();
+        //for (int i = 1; i <= 8; i++) {
+            int rand = random(1,9);
+            if ( invaders[rand].isSpawned() ) {
+                invaders[rand].move();
             }
-        }
+        //}
         spaceship.move(joystick.moveListener());
         spaceship.gun(joystick.shootListener());
         
     } else {
         if ( joystick.shootListener() ) {
             for (int col = 1; col <= 8; col++) {
+                if(invaders[col].isSpawned()) 
+                    invaders[col].despawn();
+            }
+            for (int col = 1; col <= 8; col++) {
                 underFire[col] = 0;
             }
             mainScreen.clearScreen();
-            drawInvaders();
             gameMaster.startGame(mainScreen);
             display.clearScreen();
         }
