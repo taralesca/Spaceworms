@@ -1,8 +1,9 @@
 #include "LedControl.h"
+#include "EEPROM.h"
 #include "LiquidCrystal.h"
 #define BAUD_RATE 9600
 #define INF 99999999999999999
-long long globalMillis = millis();
+long globalMillis = millis();
 
 /* Change the following for joystick / potentiometer */
 #define X_PIN A2
@@ -12,7 +13,18 @@ long long globalMillis = millis();
 #define V0_PIN 9 
 
 bool underFire[9]; // !TODO
+long timer = 0;
+bool message = false;
 
+int getHighScore(){
+    int highscore;
+    EEPROM.get(0, highscore);
+    return highscore;
+}
+void setHighScore(int currentScore){
+    if(getHighScore() < currentScore)
+        EEPROM.put(0, currentScore);
+}
 
 class Matrix {
     /*                  The Matrix class wraps around LedControl                    */
@@ -73,14 +85,25 @@ class GameMenu {
   public:
 
     void welcomeMessage(LCD display) {
+        display.clearScreen();
         display.printLCD("Spaceworms", 0, 3);
         display.printLCD("Press X to start", 1, 0);
     }
 
-    void gameOverMessage(LCD display) {
+    void gameOverMessage(LCD display, long score) {
         display.clearScreen();
-        display.printLCD("Game Over", 0, 3);
-        display.printLCD("X to restart", 1, 2);
+        display.printLCD("Game Over! ", 0, 1);
+        display.printLCD(String(score/100), 0, 12);
+        //display.printLCD("X to restart", 1, 2);
+        display.printLCD("Highscore: ", 1, 1);
+        int highscore;
+        EEPROM.get(0, highscore);
+        display.printLCD(String(highscore/100), 1 ,12);
+    }
+    void highscoreScreen(LCD display, int score) {
+        display.clearScreen();
+        display.printLCD("Highscore", 0, 1);
+        display.printLCD(String(score/100),0 ,12);
     }
 
 } gameMenu; /* to be treated like Singleton */
@@ -192,7 +215,7 @@ class Spaceship {
 
     void signalShoot(int col) {
         /// !TODO
-        long long currentTime;
+        long currentTime;
         underFire[col] = true;
         if (currentTime - globalMillis >= 200) {
             underFire[col] = false;
@@ -238,6 +261,8 @@ class GameMaster {
     }
 
     void startGame(GameScreen &gameScreen) {
+        message = false;
+        timer = millis();
         if(joystick.shootListener()){
             gameMenu.welcomeMessage(display);
             running = true;
@@ -257,11 +282,14 @@ class GameMaster {
     }
 
     void gameOver(GameScreen &gameScreen) {
-        gameMenu.gameOverMessage(display);
+        long score = millis() - timer;
+        setHighScore(score);
+        gameMenu.gameOverMessage(display, score);
         end = true;
         running = false;
         gameScreen.clearScreen();
         drawGameOverScreen(gameScreen);
+        timer = millis();
     }
 
     void isGameOver() {
@@ -316,7 +344,7 @@ class Invader {
 
     void move(){
         isMoving = true;
-        long long currentTime = millis();
+        long currentTime = millis();
         int directionRow = 1;
         int directionCol = 1;
         if (posRow <= 6) {
@@ -364,10 +392,14 @@ void setup() {
     gameMenu.welcomeMessage(display);
 }
 
-
+long globalMillis2 = 0;
 void loop() {
-
     if ( gameMaster.isRunning() ) {
+        if(!message){
+            //display.clearScreen();
+            display.printLCD("Shoot 'em all!", 0, 0);
+            message = true;
+        }
         mainScreen.draw();
         for (int i = 1; i <= 8; i++) {
             if ( invaders[i].isSpawned() ) {
@@ -385,6 +417,7 @@ void loop() {
             mainScreen.clearScreen();
             drawInvaders();
             gameMaster.startGame(mainScreen);
+            display.clearScreen();
         }
     }
 }
