@@ -2,9 +2,15 @@
 Simple 8x8 screen game designed for Arduino Uno.
 
 
-Worms attack from outer space. Kill them with your laser.
-Luckily, they come one by one, but beware: Some worms move incredibly fast!
+### Required physical parts
 
+* 1088AS LED Matrix (or other, as long as connected with MAX7219)
+* MAX7219 Driver
+* 16x2 LED Display
+* Potentiometer / Joystick or any type of analog input *minor changes may be necessary*.
+* Pushbutton
+* 10 mF capacitor
+* 10k & 1k Ohm resistances
+* Countless wires
 
-!TODO - Work in progress
-Still lacks levels, timers, highscores.
+### Gameplay
