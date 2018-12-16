@@ -1,9 +1,9 @@
 #include "LedControl.h"
 #include "EEPROM.h"
 #include "LiquidCrystal.h"
+
+/* Only use Serial for debugging purposes, it messes up the LCD display */
 #define BAUD_RATE 9600
-#define INF 99999999999999999
-long globalMillis = millis();
 
 /* Change the following for joystick / potentiometer */
 #define X_PIN A2
@@ -12,19 +12,14 @@ long globalMillis = millis();
 /* V0_PIN uses PWM to control display intensity */
 #define V0_PIN 9 
 
-bool underFire[9]; // !TODO
-long timer = 0;
-bool message = false;
+bool gUnderFire[9];
+long gTimer = 0;
+bool gMessageDisplay = false;
+long gMillis2 = 0;
+long gMillis = millis();
+int  gSpeed = 200;
 
-long getHighScore(){
-    long highscore;
-    EEPROM.get(0, highscore);
-    return highscore;
-}
-void setHighScore(long currentScore){
-    if(getHighScore() < currentScore)
-        EEPROM.put(0, currentScore);
-}
+
 
 class Matrix {
     /*                  The Matrix class wraps around LedControl                    */
@@ -72,9 +67,9 @@ class LCD {
         lcd.clear();
     }
 
-    void printLCD(String message, int row, int col) {
+    void printLCD(String gMessageDisplay, int row, int col) {
         lcd.setCursor(col, row);  
-        lcd.print(message);
+        lcd.print(gMessageDisplay);
     }
 
 } display; /* to be treated like Singleton */
@@ -156,7 +151,7 @@ class GameScreen {
     void clearMissiles() {
         // !TODO 
         for (int i = 1; i <= 8; i++) {
-            underFire[i] = false;
+            gUnderFire[i] = false;
         }
     }
     void draw() {
@@ -216,10 +211,10 @@ class Spaceship {
     void signalShoot(int col) {
         /// !TODO
         long currentTime;
-        underFire[col] = true;
-        if (currentTime - globalMillis >= 200) {
-            underFire[col] = false;
-            globalMillis = currentTime;
+        gUnderFire[col] = true;
+        if (currentTime - gMillis >= 200) {
+            gUnderFire[col] = false;
+            gMillis = currentTime;
         }
     }
 
@@ -261,8 +256,8 @@ class GameMaster {
     }
 
     void startGame(GameScreen &gameScreen) {
-        message = false;
-        timer = millis();
+        gMessageDisplay = false;
+        gTimer = millis();
         if(joystick.shootListener()){
             gameMenu.welcomeMessage(display);
             running = true;
@@ -280,16 +275,24 @@ class GameMaster {
         }
         gameScreen.draw();
     }
-
+    long getHighScore(){
+        long highscore;
+        EEPROM.get(0, highscore);
+        return highscore;
+    }
+    void setHighScore(long currentScore){
+        if(getHighScore() < currentScore)
+            EEPROM.put(0, currentScore);
+    }
     void gameOver(GameScreen &gameScreen) {
-        long score = millis() - timer;
+        long score = millis() - gTimer;
         setHighScore(score);
         gameMenu.gameOverMessage(display, score);
         end = true;
         running = false;
         gameScreen.clearScreen();
         drawGameOverScreen(gameScreen);
-        timer = millis();
+        gTimer = millis();
     }
 
     void isGameOver() {
@@ -302,16 +305,16 @@ class GameMaster {
 class Invader {
     int posCol;
     int posRow;
-    int speed;
+    int gSpeed;
     bool spawned;
     bool isMoving;
   public:
     Invader() {} /* = default */
     
-    Invader(int posRow, int posCol, int speed){
+    Invader(int posRow, int posCol, int gSpeed){
         this->posRow = posRow;
         this->posCol = posCol;
-        this->speed = speed;
+        this->gSpeed = gSpeed;
         this->spawned = true;
         this->isMoving = false;
         drawInvader();
@@ -350,23 +353,23 @@ class Invader {
         int directionCol = 1;
         if (posRow <= 6) {
 
-            if (currentTime - globalMillis >= speed) {
+            if (currentTime - gMillis >= gSpeed) {
 
                 clearInvader();
                 posRow = posRow + directionRow;
                 posCol = posCol;
-                if (posRow == 7 && !underFire[posCol]) {
+                if (posRow == 7 && !gUnderFire[posCol]) {
                     signalGameOver(gameMaster);
                 }
                 
-                if (underFire[posCol] && isMoving) {
+                if (gUnderFire[posCol] && isMoving) {
                     this->despawn();
-                    underFire[posCol] = false;
+                    gUnderFire[posCol] = false;
                 } else {
                     drawInvader();
                 }
                 
-                globalMillis = currentTime;
+                gMillis = currentTime;
             }
         }
     }
@@ -374,13 +377,18 @@ class Invader {
 
 
 
+void gDrawInvaders(int gSpeed) {
 
-void drawInvaders(int speed) {
-    /// !TODO
+    if(millis() - gMillis2 > 10000) {
+        gSpeed -= 10;
+        gMillis2 = millis();
+    }
+
     for (int col = 1; col <= 8; col++) {
         if(!invaders[col].isSpawned()) 
-            invaders[col] = Invader(random(1,2), col, random(speed, speed+200));
+            invaders[col] = Invader(random(1,2), col, random(gSpeed, gSpeed+200));
     }
+    
 }
 
 
@@ -394,16 +402,16 @@ void setup() {
     gameMenu.welcomeMessage(display);
 }
 
-long globalMillis2 = 0;
-long speed = 200;
+
 void loop() {
     if ( gameMaster.isRunning() ) {
-        if(!message){
+        if(!gMessageDisplay){
             //display.clearScreen();
             display.printLCD("Shoot 'em all!", 0, 0);
-            message = true;
+            display.printLCD("Speed increases!", 1, 0);
+            gMessageDisplay = true;
         }
-        drawInvaders(speed);
+        gDrawInvaders(gSpeed);
 
         mainScreen.draw();
         //for (int i = 1; i <= 8; i++) {
@@ -422,7 +430,7 @@ void loop() {
                     invaders[col].despawn();
             }
             for (int col = 1; col <= 8; col++) {
-                underFire[col] = 0;
+                gUnderFire[col] = 0;
             }
             mainScreen.clearScreen();
             gameMaster.startGame(mainScreen);
