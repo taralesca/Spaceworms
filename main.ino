@@ -2,14 +2,14 @@
 #include "EEPROM.h"
 #include "LiquidCrystal.h"
 
-/* Only use Serial for debugging purposes, it messes up the LCD display */
+// Only use Serial for debugging purposes, it messes up the LCD display
 #define BAUD_RATE 9600
 
-/* Change the following for joystick / potentiometer */
+// Change the following for joystick / potentiometer
 #define X_PIN A2
 #define BTN_PIN 13
 
-/* V0_PIN uses PWM to control display intensity */
+// V0_PIN uses PWM to control display intensity
 #define V0_PIN 9 
 
 bool gUnderFire[9];
@@ -22,8 +22,9 @@ int  gSpeed = 200;
 
 
 class Matrix {
-    /*                  The Matrix class wraps around LedControl                    */
-    /* With minimal effort, it could be changed with another type of square display */
+// The Matrix class wraps around LedControl               
+// With minimal effort, it could be changed with another type of square display
+
   private:
     
     LedControl led_matrix = LedControl(12, 11, 10, 1);
@@ -48,7 +49,7 @@ class Matrix {
         led_matrix.setLed(0, row - 1, col - 1, false);
     }
 
-} matrix; /* to be treated like Singleton */
+} matrix; // to be treated like Singleton
 
 
 class LCD {
@@ -72,11 +73,11 @@ class LCD {
         lcd.print(gMessageDisplay);
     }
 
-} display; /* to be treated like Singleton */
+} display; // to be treated like Singleton
 
 
 class GameMenu {
-    /// TODO! - may completely remove this
+
   public:
 
     void welcomeMessage(LCD display) {
@@ -87,9 +88,10 @@ class GameMenu {
 
     void gameOverMessage(LCD display, long score) {
         display.clearScreen();
+
         display.printLCD("Game Over! ", 0, 1);
         display.printLCD(String(score/100), 0, 12);
-        //display.printLCD("X to restart", 1, 2);
+
         display.printLCD("Highscore: ", 1, 1);
         long highscore;
         EEPROM.get(0, highscore);
@@ -101,23 +103,23 @@ class GameMenu {
         display.printLCD(String(score/100),0 ,12);
     }
 
-} gameMenu; /* to be treated like Singleton */
+} gameMenu; // to be treated like Singleton
 
 
 class Control {
-    /* Works regardless of analog input alternative */
+    //  Works regardless of analog input alternative 
 
   public:
+
     Control() {
         pinMode(BTN_PIN, INPUT);
         digitalWrite(BTN_PIN, HIGH);
     }
 
     bool shootListener() {
-        /* 1 = shooting | 0 = otherwise */
+        //  1 = shooting | 0 = otherwise
         bool press = digitalRead(BTN_PIN);
         return press; 
-        /// !TODO
     }
 
     int moveListener() {
@@ -126,17 +128,20 @@ class Control {
         return x;
     }
 
-} joystick; /* to be treated like Singleton */
+} joystick; // to be treated like Singleton
 
 
 
 class GameScreen {
-    /* The game screen is 9x9 to avoid border collisions */
+    //  The game screen is 9x9 to avoid border collisions 
 
   private:
+
     bool screen[9][9];
+  
   public:
-    gameScreen() {
+  
+    GameScreen() {
         clearScreen();
     }
 
@@ -149,12 +154,13 @@ class GameScreen {
     }
 
     void clearMissiles() {
-        // !TODO 
         for (int i = 1; i <= 8; i++) {
             gUnderFire[i] = false;
         }
     }
     void draw() {
+        //  This function feeds frames to the screen 
+
         for (int i = 1; i <= 8; i++) {
             for (int j = 1; j <= 8; j++) {
                 if (screen[i][j]) {
@@ -174,15 +180,19 @@ class GameScreen {
         screen[row][col] = false;
     }
 
-} mainScreen; /* to be treated like Singleton */
+} mainScreen; // to be treated like Singleton
 
 
 class Spaceship {
+
   private:
+
     const int initialPosition = 4;
     const int yAxisLocked = 8;
     int position;
+
   public:
+
     Spaceship(){
         position = initialPosition;
         drawSpaceship();
@@ -209,7 +219,6 @@ class Spaceship {
     }
 
     void signalShoot(int col) {
-        /// !TODO
         long currentTime;
         gUnderFire[col] = true;
         if (currentTime - gMillis >= 200) {
@@ -221,24 +230,25 @@ class Spaceship {
     void gun(bool shoot) {
         int trajectory = position;
         int startPosition = yAxisLocked - 2;
+
         if (shoot) {
-            for(int i = startPosition; i >= 0; i--){
+            for (int i = startPosition; i >= 0; i--) {
                 mainScreen.bitOn(i, trajectory);
                 mainScreen.draw();
             }
-            for(int i = startPosition; i >= 0; i--){
+            for (int i = startPosition; i >= 0; i--) {
                 mainScreen.bitOff(i, trajectory);
                 mainScreen.draw();
             }
             signalShoot(position); 
-
         }
+
     }
-} spaceship; /* to be treated like Singleton */
+} spaceship; // to be treated like Singleton
 
 
 class GameMaster {
-    /* In charge with the game flow. */
+    //  In charge with the game flow. 
   private:
 
     bool running;
@@ -258,7 +268,7 @@ class GameMaster {
     void startGame(GameScreen &gameScreen) {
         gMessageDisplay = false;
         gTimer = millis();
-        if(joystick.shootListener()){
+        if (joystick.shootListener()) {
             gameMenu.welcomeMessage(display);
             running = true;
         }
@@ -270,28 +280,32 @@ class GameMaster {
 
     void drawGameOverScreen(GameScreen &gameScreen) {
         gameScreen.clearScreen();
-        for (int i = 1; i <= 8; i++){
+        for (int i = 1; i <= 8; i++) {
             gameScreen.bitOn(i, i);
         }
         gameScreen.draw();
     }
-    long getHighScore(){
+    long getHighScore() {
         long highscore;
         EEPROM.get(0, highscore);
         return highscore;
     }
-    void setHighScore(long currentScore){
-        if(getHighScore() < currentScore)
+    void setHighScore(long currentScore) {
+        if (getHighScore() < currentScore) {
             EEPROM.put(0, currentScore);
+        }
     }
     void gameOver(GameScreen &gameScreen) {
         long score = millis() - gTimer;
         setHighScore(score);
         gameMenu.gameOverMessage(display, score);
+
         end = true;
         running = false;
+
         gameScreen.clearScreen();
         drawGameOverScreen(gameScreen);
+
         gTimer = millis();
     }
 
@@ -303,15 +317,19 @@ class GameMaster {
 
 
 class Invader {
+  private:
+
     int posCol;
     int posRow;
     int gSpeed;
     bool spawned;
     bool isMoving;
+
   public:
-    Invader() {} /* = default */
+
+    Invader() {} // = default 
     
-    Invader(int posRow, int posCol, int gSpeed){
+    Invader(int posRow, int posCol, int gSpeed) {
         this->posRow = posRow;
         this->posCol = posCol;
         this->gSpeed = gSpeed;
@@ -326,7 +344,6 @@ class Invader {
     }
 
     void clearInvader() {
-        //this->posRow = 0;
         mainScreen.bitOff(posRow - 1, posCol);
         mainScreen.bitOff(posRow    , posCol);
     }   
@@ -347,6 +364,12 @@ class Invader {
     }
 
     void move(){
+        // Invaders move using this function
+        // 
+        // If a column is under fire (gUnderFire[col] == true), the invader residing
+        // in that particular column instantly dies.
+         
+
         isMoving = true;
         long currentTime = millis();
         int directionRow = 1;
@@ -378,15 +401,19 @@ class Invader {
 
 
 void gDrawInvaders(int gSpeed) {
+    // New invaders are spawned on empty cells. Their speed increases by 10ms every 10 
+    // seconds.
 
-    if(millis() - gMillis2 > 10000) {
+    const int speedUpInterval = 10000; // ms
+    if(millis() - gMillis2 > speedUpInterval) {
         gSpeed -= 10;
         gMillis2 = millis();
     }
 
     for (int col = 1; col <= 8; col++) {
-        if(!invaders[col].isSpawned()) 
+        if (!invaders[col].isSpawned()) {
             invaders[col] = Invader(random(1,2), col, random(gSpeed, gSpeed+200));
+        }
     }
     
 }
@@ -406,20 +433,20 @@ void setup() {
 void loop() {
     if ( gameMaster.isRunning() ) {
         if(!gMessageDisplay){
-            //display.clearScreen();
+
             display.printLCD("Shoot 'em all!", 0, 0);
             display.printLCD("Speed increases!", 1, 0);
             gMessageDisplay = true;
-        }
-        gDrawInvaders(gSpeed);
 
-        mainScreen.draw();
-        //for (int i = 1; i <= 8; i++) {
-            int rand = random(1,9);
-            if ( invaders[rand].isSpawned() ) {
-                invaders[rand].move();
-            }
-        //}
+        }
+
+        gDrawInvaders(gSpeed);
+        mainScreen.draw(); 
+
+        int rand = random(1,9);
+        if ( invaders[rand].isSpawned() ) {
+            invaders[rand].move();
+        }
         spaceship.move(joystick.moveListener());
         spaceship.gun(joystick.shootListener());
         
