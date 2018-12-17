@@ -1,5 +1,5 @@
 # Spaceworms
-Simple 8x8 screen game designed for Arduino Uno.
+Simple 8x8 screen game designed for Arduino Uno. **Check the wiki for Documentation**
 
 
 ## Required physical parts
