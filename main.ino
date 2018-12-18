@@ -2,6 +2,13 @@
 #include "EEPROM.h"
 #include "LiquidCrystal.h"
 
+#define D2 2
+#define D3 3
+#define D4 4
+#define D5 5
+#define D6 6
+#define D7 7
+
 // Only use Serial for debugging purposes, it messes up the LCD display
 #define BAUD_RATE 9600
 
@@ -26,8 +33,11 @@ class Matrix {
 // With minimal effort, it could be changed with another type of square display
 
   private:
-    
-    LedControl led_matrix = LedControl(12, 11, 10, 1);
+    const int dataPin = 12;
+    const int clockPin = 11;
+    const int csPin = 10;
+    const int numDevices = 1;
+    LedControl led_matrix = LedControl(dataPin, clockPin, csPin, numDevices);
 
   public:
 
@@ -55,7 +65,7 @@ class Matrix {
 class LCD {
   private:
 
-    LiquidCrystal lcd = LiquidCrystal(2, 3, 4, 5, 6, 7);
+    LiquidCrystal lcd = LiquidCrystal(D2, D3, D4, D5, D6, D7);
 
   public:
 
