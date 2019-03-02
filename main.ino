@@ -2,33 +2,45 @@
 #include "EEPROM.h"
 #include "LiquidCrystal.h"
 
-#define D2 2
-#define D3 3
-#define D4 4
-#define D5 5
-#define D6 6
-#define D7 7
+// Change the following for joystick / potentiometer (both work the same)
+#define X_PIN A2    // X axis control
+#define BTN_PIN 13  // Button control
 
-// Only use Serial for debugging purposes, it messes up the LCD display
-#define BAUD_RATE 9600
+// Digital Arduino pins in use:
+const byte D2 = 2;
+const byte D3 = 3;
+const byte D4 = 4;
+const byte D5 = 5;
+const byte D6 = 6;
+const byte D7 = 7;
 
-// Change the following for joystick / potentiometer
-#define X_PIN A2
-#define BTN_PIN 13
+// Only use Serial for debugging purposes, it could crash the LCD Display
+const int BAUD_RATE =  9600;
 
 // V0_PIN uses PWM to control display intensity
-#define V0_PIN 9 
+const byte V0_PIN =  9;
+const int gLEDBacklight = 90; 
 
-bool gUnderFire[9];
+
+// Game dificulty is directly influenced by the following variable:
+int gSpeed = 140;
+
 long gTimer = 0;
+
+// If i-th column is under fire, gUnderFire[i] == true
+bool gUnderFire[9];
+
 bool gMessageDisplay = false;
+
+// Normal gamescores vary between 10 and 1000
+const int gScoreModifier = 100;
+
+// We use two of these because they may be updated concurrently
 long gMillis2 = 0;
-long gMillis = millis();
-int  gSpeed = 200;
-
-
+long gMillis = 0;
 
 class Matrix {
+// SINGLETON 
 // The Matrix class wraps around LedControl               
 // With minimal effort, it could be changed with another type of square display
 
@@ -37,44 +49,57 @@ class Matrix {
     const int clockPin = 11;
     const int csPin = 10;
     const int numDevices = 1;
-    LedControl led_matrix = LedControl(dataPin, clockPin, csPin, numDevices);
+    LedControl ledMatrix = LedControl(dataPin, clockPin, csPin, numDevices);
 
+    Matrix() {
+        ledMatrix.shutdown(0, false); 
+        ledMatrix.setIntensity(0, 2); 
+        ledMatrix.clearDisplay(0);
+    }
   public:
-
-    Matrix(){
-        led_matrix.shutdown(0, false); 
-        led_matrix.setIntensity(0, 2); 
-        led_matrix.clearDisplay(0);
+  
+    static Matrix& instance() {
+        static Matrix INSTANCE;
+        return INSTANCE;
     }
 
     void clearMatrix() {
-        led_matrix.clearDisplay(0);
+        ledMatrix.clearDisplay(0);
     }
 
     void ledOn(int row, int col) {
-        led_matrix.setLed(0, row - 1, col - 1, true);
+        ledMatrix.setLed(0, row - 1, col - 1, true);
     }
 
     void ledOff(int row, int col) {
-        led_matrix.setLed(0, row - 1, col - 1, false);
+        ledMatrix.setLed(0, row - 1, col - 1, false);
     }
 
-} matrix; // to be treated like Singleton
+};
+
+Matrix matrix = Matrix::instance();
 
 
 class LCD {
+    // SINGLETON
+    // Makes use of a 16x2 screen for message display
+
   private:
 
     LiquidCrystal lcd = LiquidCrystal(D2, D3, D4, D5, D6, D7);
-
-  public:
-
     LCD() {
         lcd.begin(16, 2);
         lcd.clear();
     }
 
-    void clearScreen() {
+  public:
+
+    static LCD& instance() {
+        static LCD INSTANCE;
+        return INSTANCE;
+    }
+
+    void clear() {
         lcd.clear();
     }
 
@@ -83,42 +108,52 @@ class LCD {
         lcd.print(gMessageDisplay);
     }
 
-} display; // to be treated like Singleton
+};
+
+LCD display = LCD::instance();
 
 
 class GameMenu {
-
+    // Uses the LCD screen to communicate
   public:
 
     void welcomeMessage(LCD display) {
-        display.clearScreen();
+        display.clear();
         display.printLCD("Spaceworms", 0, 3);
         display.printLCD("Press X to start", 1, 0);
     }
 
     void gameOverMessage(LCD display, long score) {
-        display.clearScreen();
+        // We display the highscore in the game over message
+        //  using EEPROM memory available on the board
+        display.clear();
 
         display.printLCD("Game Over! ", 0, 1);
-        display.printLCD(String(score/100), 0, 12);
+        display.printLCD(String(score/gScoreModifier), 0, 12);
 
         display.printLCD("Highscore: ", 1, 1);
         long highscore;
         EEPROM.get(0, highscore);
-        display.printLCD(String(highscore/100), 1 ,12);
+        display.printLCD(String(highscore/gScoreModifier), 1 ,12);
     }
     void highscoreScreen(LCD display, long score) {
-        display.clearScreen();
+        display.clear();
         display.printLCD("Highscore", 0, 1);
-        display.printLCD(String(score/100),0 ,12);
+        display.printLCD(String(score/gScoreModifier),0 ,12);
     }
 
-} gameMenu; // to be treated like Singleton
+} gameMenu;
+
+class GameObject {
+    
+  public:
+    virtual void draw() = 0;
+    virtual void clear() = 0;
+};
 
 
 class Control {
-    //  Works regardless of analog input alternative 
-
+    // Works regardless of analog input alternative 
   public:
 
     Control() {
@@ -127,35 +162,37 @@ class Control {
     }
 
     bool shootListener() {
-        //  1 = shooting | 0 = otherwise
         bool press = digitalRead(BTN_PIN);
         return press; 
     }
 
     int moveListener() {
         int input = analogRead(X_PIN);
-        int x = map(input, 0, 1030, 1, 9);
-        return x;
+        int mappedInput = map(input, 0, 1030, 1, 9);
+        return mappedInput;
     }
 
-} joystick; // to be treated like Singleton
+} joystick; 
 
 
 
-class GameScreen {
-    //  The game screen is 9x9 to avoid border collisions 
+class GameScreen : public GameObject {
+    // SINGLETON
+    // The game screen is 9x9 instead of 8x8 to avoid border collisions 
 
   private:
 
     bool screen[9][9];
-  
-  public:
-  
     GameScreen() {
-        clearScreen();
+        clear();
+    }
+  public:
+    static GameScreen& instance() {
+            static GameScreen INSTANCE;
+            return INSTANCE;
     }
 
-    void clearScreen() {
+    void clear() {
         for (int i = 1; i <= 8; i++) {
             for (int j = 1; j <= 8; j++) {
                 screen[i][j] = false;
@@ -182,6 +219,8 @@ class GameScreen {
         }
     }
 
+    // bitOn / bitOff methods provide logical object creation mechanisms
+    // For physical interaction with the LED matrix, check Matrix class
     void bitOn(int row, int col) {
         screen[row][col] = true;
     }
@@ -190,10 +229,11 @@ class GameScreen {
         screen[row][col] = false;
     }
 
-} mainScreen; // to be treated like Singleton
+};
+GameScreen mainScreen = GameScreen::instance(); 
 
 
-class Spaceship {
+class Spaceship : public GameObject{
 
   private:
 
@@ -205,17 +245,17 @@ class Spaceship {
 
     Spaceship(){
         position = initialPosition;
-        drawSpaceship();
+        draw();
     }
 
-    void clearSpaceship() {
+    void clear() {
         mainScreen.bitOff(yAxisLocked - 1, position    );
         mainScreen.bitOff(yAxisLocked,     position - 1);
         mainScreen.bitOff(yAxisLocked,     position    );
         mainScreen.bitOff(yAxisLocked,     position + 1);
     }
 
-    void drawSpaceship() {
+    void draw() {
         mainScreen.bitOn(yAxisLocked - 1, position    );
         mainScreen.bitOn(yAxisLocked,     position - 1);
         mainScreen.bitOn(yAxisLocked,     position    );
@@ -223,9 +263,9 @@ class Spaceship {
     }
 
     void move(int position) {
-        clearSpaceship();
+        clear();
         this->position = position;
-        drawSpaceship();
+        draw();
     }
 
     void signalShoot(int col) {
@@ -254,11 +294,11 @@ class Spaceship {
         }
 
     }
-} spaceship; // to be treated like Singleton
+} spaceship;
 
 
 class GameMaster {
-    //  In charge with the game flow. 
+    // In charge with the game flow. 
   private:
 
     bool running;
@@ -289,22 +329,25 @@ class GameMaster {
     }
 
     void drawGameOverScreen(GameScreen &gameScreen) {
-        gameScreen.clearScreen();
+        gameScreen.clear();
         for (int i = 1; i <= 8; i++) {
             gameScreen.bitOn(i, i);
         }
         gameScreen.draw();
     }
+    
     long getHighScore() {
         long highscore;
         EEPROM.get(0, highscore);
         return highscore;
     }
+
     void setHighScore(long currentScore) {
         if (getHighScore() < currentScore) {
             EEPROM.put(0, currentScore);
         }
     }
+
     void gameOver(GameScreen &gameScreen) {
         long score = millis() - gTimer;
         setHighScore(score);
@@ -313,7 +356,7 @@ class GameMaster {
         end = true;
         running = false;
 
-        gameScreen.clearScreen();
+        gameScreen.clear();
         drawGameOverScreen(gameScreen);
 
         gTimer = millis();
@@ -331,18 +374,18 @@ class Invader {
 
     int posCol;
     int posRow;
-    int gSpeed;
+    int singleSpeed;
     bool spawned;
     bool isMoving;
 
   public:
 
-    Invader() {} // = default 
+    Invader() = default; 
     
-    Invader(int posRow, int posCol, int gSpeed) {
+    Invader(int posRow, int posCol, int singleSpeed) {
         this->posRow = posRow;
         this->posCol = posCol;
-        this->gSpeed = gSpeed;
+        this->singleSpeed = gSpeed;
         this->spawned = true;
         this->isMoving = false;
         drawInvader();
@@ -373,7 +416,7 @@ class Invader {
         gameMaster.gameOver(mainScreen);
     }
 
-    void move(){
+    void move(int){
         // Invaders move using this function
         // 
         // If a column is under fire (gUnderFire[col] == true), the invader residing
@@ -412,17 +455,18 @@ class Invader {
 
 void gDrawInvaders(int gSpeed) {
     // New invaders are spawned on empty cells. Their speed increases by 10ms every 10 
-    // seconds.
+    //  seconds.
 
     const int speedUpInterval = 10000; // ms
-    if(millis() - gMillis2 > speedUpInterval) {
-        gSpeed -= 10;
+
+    if (millis() - gMillis2 > speedUpInterval) {
+        gSpeed -= 10; // ms
         gMillis2 = millis();
     }
 
     for (int col = 1; col <= 8; col++) {
         if (!invaders[col].isSpawned()) {
-            invaders[col] = Invader(random(1,2), col, random(gSpeed, gSpeed+200));
+            invaders[col] = Invader(random(1,2), col, random(gSpeed, gSpeed + 100));
         }
     }
     
@@ -432,9 +476,11 @@ void gDrawInvaders(int gSpeed) {
 void setup() {
 
     pinMode(V0_PIN, OUTPUT); 
-    analogWrite(V0_PIN, 90); 
+    analogWrite(V0_PIN, gLEDBacklight); 
 
-    randomSeed( analogRead(0) );
+    // When not connected, pins generate noise which is a decent random seed
+    //  hence the usage of analog pin 0 
+    randomSeed( analogRead(A0) );
 
     gameMenu.welcomeMessage(display);
 }
@@ -453,9 +499,9 @@ void loop() {
         gDrawInvaders(gSpeed);
         mainScreen.draw(); 
 
-        int rand = random(1,9);
+        int rand = random(1,9);  // Columns start at 1 and they end at 8
         if ( invaders[rand].isSpawned() ) {
-            invaders[rand].move();
+            invaders[rand].move(0);
         }
         spaceship.move(joystick.moveListener());
         spaceship.gun(joystick.shootListener());
@@ -469,9 +515,9 @@ void loop() {
             for (int col = 1; col <= 8; col++) {
                 gUnderFire[col] = 0;
             }
-            mainScreen.clearScreen();
+            mainScreen.clear();
             gameMaster.startGame(mainScreen);
-            display.clearScreen();
+            display.clear();
         }
     }
 }
